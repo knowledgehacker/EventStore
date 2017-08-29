@@ -18,7 +18,7 @@ namespace EventStore.Core.TransactionLog.Chunks
             Ensure.NotNull(chaserCheckpoint, "chaserCheckpoint");
 
             _chaserCheckpoint = chaserCheckpoint;
-            _reader = new TFChunkReader(db, writerCheckpoint, _chaserCheckpoint.Read());
+            _reader = new TFChunkReader(db, writerCheckpoint, new InMemoryCheckpoint(-1), _chaserCheckpoint.Read());
         }
 
         public void Open()

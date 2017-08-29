@@ -17,17 +17,25 @@ namespace EventStore.Core.TransactionLog.Chunks
 
         private readonly TFChunkDb _db;
         private readonly ICheckpoint _writerCheckpoint;
+        private readonly ICheckpoint _replicationCheckpoint;
         private long _curPos;
 
-        public TFChunkReader(TFChunkDb db, ICheckpoint writerCheckpoint, long initialPosition = 0)
+        public TFChunkReader(TFChunkDb db, ICheckpoint writerCheckpoint, ICheckpoint replicationCheckpoint, long initialPosition = 0)
         {
             Ensure.NotNull(db, "dbConfig");
             Ensure.NotNull(writerCheckpoint, "writerCheckpoint");
+            Ensure.NotNull(replicationCheckpoint, "replicationCheckpoint");
             Ensure.Nonnegative(initialPosition, "initialPosition");
 
             _db = db;
             _writerCheckpoint = writerCheckpoint;
+            _replicationCheckpoint = replicationCheckpoint;
             _curPos = initialPosition;
+        }
+
+        public TFChunkReader(TFChunkDb db, ICheckpoint writerCheckpoint, long initialPosition = 0)
+        : this(db, writerCheckpoint, new InMemoryCheckpoint(-1), initialPosition)
+        {
         }
 
         public void Reposition(long position)
@@ -45,6 +53,9 @@ namespace EventStore.Core.TransactionLog.Chunks
             while (true)
             {
                 var pos = _curPos;
+                if (!IsDataReplicated(pos))
+                    return SeqReadResult.Failure;
+
                 var writerChk = _writerCheckpoint.Read();
                 if (pos >= writerChk)
                     return SeqReadResult.Failure;
@@ -123,6 +134,9 @@ namespace EventStore.Core.TransactionLog.Chunks
                 if (result.Success)
                 {
                     _curPos = chunk.ChunkHeader.ChunkStartPosition + result.NextPosition;
+                    if(!IsDataReplicated(_curPos))
+                        return SeqReadResult.Failure;
+
                     var postPos = result.LogRecord.GetNextLogPosition(result.LogRecord.LogPosition, result.RecordLength);
                     var eof = postPos == writerChk;
                     var res = new SeqReadResult(true, eof, result.LogRecord, result.RecordLength, result.LogRecord.LogPosition, postPos);
@@ -143,6 +157,9 @@ namespace EventStore.Core.TransactionLog.Chunks
 
         private RecordReadResult TryReadAtInternal(long position, int retries)
         {
+            if(!IsDataReplicated(position))
+                return RecordReadResult.Failure;
+
             var writerChk = _writerCheckpoint.Read();
             if (position >= writerChk)
                 return RecordReadResult.Failure;
@@ -168,6 +185,9 @@ namespace EventStore.Core.TransactionLog.Chunks
 
         private bool ExistsAtInternal(long position, int retries)
         {
+            if(!IsDataReplicated(position))
+                return false;
+
             var writerChk = _writerCheckpoint.Read();
             if (position >= writerChk)
                 return false;
@@ -184,6 +204,19 @@ namespace EventStore.Core.TransactionLog.Chunks
                     throw new FileBeingDeletedException("Been told the file was deleted > MaxRetries times. Probably a problem in db.");
                 return ExistsAtInternal(position, retries + 1);
             }
+        }
+
+        private bool IsDataReplicated(long position)
+        {
+            if(_replicationCheckpoint != null)
+            {
+                var checkpoint = _replicationCheckpoint.ReadNonFlushed();
+                if(checkpoint > -1 && position > checkpoint)
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static void CountRead(bool isCached)
