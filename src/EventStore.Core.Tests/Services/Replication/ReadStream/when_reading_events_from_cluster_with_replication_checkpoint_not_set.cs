@@ -42,14 +42,17 @@ namespace EventStore.Core.Tests.Replication.ReadStream
         {
             _expectedNumberOfRoleAssignments.Wait(5000);
 
+            var master = GetMaster();
+            Assert.IsNotNull(master, "Could not get master node");
+
             // Set the checkpoint so the check is not skipped
             var events = new Event[]{new Event(Guid.NewGuid(), "test-type", false, new byte[10], new byte[0]) };
-            var writeResult = ReplicationTestHelper.WriteEvent(GetMaster(), events, _streamId);
+            var writeResult = ReplicationTestHelper.WriteEvent(master, events, _streamId);
             Assert.AreEqual(OperationResult.Success, writeResult.Result);
             _commitPosition = writeResult.CommitPosition;
 
             // Set checkpoint to starting value
-            GetMaster().Db.Config.ReplicationCheckpoint.Write(-1);
+            master.Db.Config.ReplicationCheckpoint.Write(-1);
             base.Given();
         }
 

@@ -47,11 +47,14 @@ namespace EventStore.Core.Tests.Replication.ReadStream
         {
             _expectedNumberOfRoleAssignments.Wait(5000);
 
+            var master = GetMaster();
+            Assert.IsNotNull(master, "Could not get master node");
+            
             // Set the checkpoint so the check is not skipped
-            GetMaster().Db.Config.ReplicationCheckpoint.Write(0);
+            master.Db.Config.ReplicationCheckpoint.Write(0);
 
             _subscriptionsConfirmed = new CountdownEvent(3);
-            _masterSubscription = new TestSubscription(GetMaster(), 1, _streamId, _subscriptionsConfirmed);
+            _masterSubscription = new TestSubscription(master, 1, _streamId, _subscriptionsConfirmed);
             _masterSubscription.CreateSubscription();
 
             _slaveSubscriptions = new List<TestSubscription>();
@@ -69,7 +72,7 @@ namespace EventStore.Core.Tests.Replication.ReadStream
             }
 
             var events = new Event[]{new Event(Guid.NewGuid(), "test-type", false, new byte[10], new byte[0]) };
-            var writeResult = ReplicationTestHelper.WriteEvent(GetMaster(), events, _streamId);
+            var writeResult = ReplicationTestHelper.WriteEvent(master, events, _streamId);
             Assert.AreEqual(OperationResult.Success, writeResult.Result);
 
             base.Given();

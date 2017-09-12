@@ -45,12 +45,14 @@ namespace EventStore.Core.Tests.Replication.ReadStream
         {
             _expectedNumberOfRoleAssignments.Wait(5000);
 
+            _liveNode = GetMaster();
+            Assert.IsNotNull(_liveNode, "Could not get master node");
+
             var events = new Event[]{new Event(Guid.NewGuid(), "test-type", false, new byte[10], new byte[0]) };
-            var writeResult = ReplicationTestHelper.WriteEvent(_nodes.First(x=>x.NodeState==VNodeState.Master), events, _streamId);
+            var writeResult = ReplicationTestHelper.WriteEvent(_liveNode, events, _streamId);
             Assert.AreEqual(OperationResult.Success, writeResult.Result);
             _commitPosition = writeResult.CommitPosition;
 
-            _liveNode = GetMaster();
             var slaves = GetSlaves();
             foreach(var s in slaves)
             {
